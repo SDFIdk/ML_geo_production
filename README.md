@@ -64,16 +64,19 @@ The example models were trained using the training code from:\
 Main processing script:
 
 ``` bash
-python src/ML_geo_production/process_images.py --json config_files/change_detection.json
+python src/ML_geo_production/process_images.py --json config_files/save_probs_preds_and_change_detection.json
 ```
+Example above use an ensamble of three models, save both probs, preds and change detection.
+
 
 Example workflows:
 
 ``` bash
 python src/ML_geo_production/do_change_detection.py --json config_files/change_detection.json
 python src/ML_geo_production/create_prediction_raster.py --json config_files/raster_production.json
-python src/ML_geo_production/process_many_areas.py --json config_files/process_many_areas.json  --shapefile shapefiles/many_areas.shp
+python src/ML_geo_production/process_many_areas.py --json config_files/process_many_areas.json  --shapefile ../multi_channel_dataset_creation/example_dataset/shape_files/many_areas.shp
 ```
+The process_many_areas.py example above shows an example of how to process many areas after each other.
 
 ------------------------------------------------------------------------
 
