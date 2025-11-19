@@ -1,6 +1,6 @@
 {
-    "path_to_images": "/mnt/T/mnt/trainingdata/bygningsudpegning/1km2data_for_benchmarking/validation_tile/rooftop_rgb",
-    "path_to_map_creation_output_folder": "/mnt/T/mnt/ML_output/building_change_detection_2025/tmpfolder/",
+    "path_to_images": "./data/rgb/",
+    "path_to_map_creation_output_folder": "./mnt/T/mnt/ML_output/building_change_detection_2025/tmpfolder/",
     "probs_path": "/mnt/T/mnt/ML_output/building_change_detection_2025/tmpfolder/probs.tif",
     "polygon_output_folder": "/mnt/T/mnt/ML_output/building_change_detection_2025/tmpfolder/polygons",
     "skip": [],
@@ -12,7 +12,7 @@
     "create_new_mapping": false,
     "path_to_mapping": "/mnt/T/mnt/trainingdata/bygningsudpegning/iter_4/roof_no_roof_mapping.txt",
     "saved_models": [
-        "/mnt/T/mnt/logs_and_models/bygningsudpegning/andringsudpegning_1km2benchmark_iter_52/models/andringsudpegning_1km2benchmark_iter_52_24.pth",
+        "./models/andringsudpegning_1km2benchmark_iter_52_24.pth",
         "./models/andringsudpegning_1km2benchmark_iter_63_24.pth",
         "./models/andringsudpegning_1km2benchmark_iter_62_24.pth"
     ],

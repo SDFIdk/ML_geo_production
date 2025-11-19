@@ -50,7 +50,7 @@ the dataset included in that repository.
 ### **3. Download example models**
 
 ``` bash
-TODO: python src/ML_geo_production/download_example_models.py
+python src/ML_geo_production/download_example_models.py
 ```
 
 **Note:**\
