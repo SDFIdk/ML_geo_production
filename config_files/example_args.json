@@ -1,0 +1,100 @@
+{
+    "path_to_images": "/mnt/T/mnt/trainingdata/bygningsudpegning/1km2data_for_benchmarking/validation_tile/rooftop_rgb",
+    "path_to_map_creation_output_folder": "/mnt/T/mnt/ML_output/building_change_detection_2025/tmpfolder/",
+    "probs_path": "/mnt/T/mnt/ML_output/building_change_detection_2025/tmpfolder/probs.tif",
+    "polygon_output_folder": "/mnt/T/mnt/ML_output/building_change_detection_2025/tmpfolder/polygons",
+    "skip": [],
+    "last_finnished_tile": null,
+    "start_with_tile": null,
+    "stop_after_tile": null,
+    "geopackage": "/mnt/T/mnt/trainingdata/bygningsudpegning/bygninger20250326nofilter.gpkg",
+    "unknown_boarder_size": 1.5,
+    "create_new_mapping": false,
+    "path_to_mapping": "/mnt/T/mnt/trainingdata/bygningsudpegning/iter_4/roof_no_roof_mapping.txt",
+    "saved_models": [
+        "/mnt/T/mnt/logs_and_models/bygningsudpegning/andringsudpegning_1km2benchmark_iter_52/models/andringsudpegning_1km2benchmark_iter_52_24.pth",
+        "./models/andringsudpegning_1km2benchmark_iter_63_24.pth",
+        "./models/andringsudpegning_1km2benchmark_iter_62_24.pth"
+    ],
+    "n_classes": 3,
+    "means": [
+        [
+            0.485,
+            0.456,
+            0.406
+        ],
+        [
+            0.485,
+            0.456,
+            0.406
+        ],
+        [
+            0.485,
+            0.456,
+            0.406
+        ]
+    ],
+    "stds": [
+        [
+            0.229,
+            0.224,
+            0.225
+        ],
+        [
+            0.229,
+            0.224,
+            0.225
+        ],
+        [
+            0.229,
+            0.224,
+            0.225
+        ]
+    ],
+    "channels": [
+        [
+            [
+                0,
+                1,
+                2
+            ]
+        ],
+        [
+            [
+                0,
+                1,
+                2
+            ]
+        ],
+        [
+            [
+                0,
+                1,
+                2
+            ]
+        ]
+    ],
+    "data_types": [
+        [
+            "rooftop_rgb"
+        ],
+        [
+            "rooftop_rgb"
+        ],
+        [
+            "rooftop_rgb"
+        ]
+    ],
+    "resolution": 0.1,
+    "batch_size": 8,
+    "patch_size": 1000,
+    "workers": 4,
+    "model_names": [
+        "tf_efficientnetv2_l.in21k",
+        "efficientnetv2_rw_m.agc_in1k",
+        "resnet50"
+    ],
+    "path_to_codes": "/mnt/T/mnt/trainingdata/bygningsudpegning/1km2data_for_benchmarking/codes.txt",
+    "overlap": 40,
+    "remove_tmp_files": false
+}

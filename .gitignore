@@ -1,0 +1,26 @@
+# ------------------------------------
+# Files to INCLUDE (Implicitly)
+# ------------------------------------
+# All Python files (.py), JSON (.json), YAML (.yml), and README.md
+# are included by default, as they are not listed in this ignore file.
+
+# ------------------------------------
+# Files to EXCLUDE (Explicitly Ignored)
+# ------------------------------------
+
+# Data & Configuration Files (Specified by User)
+*.pth       # PyTorch Saved Model files
+*.tif       # GeoTIFF/Image files
+
+# ESRI Shapefile components (GIS Files)
+*.prj       # Projection file
+*.shx       # Shape Index Format
+*.dbf       # Attribute data table
+*.shp       # Main shape geometry file
+*.cpg       # Codepage file
+
+# Python Compiled/Cache Files
+*.pyc       # Compiled Python files
+
+# Folders commonly ignored
+__pycache__/ # Python cache folder
