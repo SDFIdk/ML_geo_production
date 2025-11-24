@@ -8,7 +8,8 @@ defined bounding box, and can optionally compare
 predictions with polygon data (GeoPackage) for change detection.
 
 ------------------------------------------------------------------------
-
+![change_detection_pipeline](https://github.com/user-attachments/assets/f3fc07ab-0b9c-422d-b236-9dcb5c798fc2)
+------------------------------------------------------------------------
 ## Features
 
 -   Model ensembling for multiple PyTorch semantic-segmentation models\
