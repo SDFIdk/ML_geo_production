@@ -7,6 +7,8 @@ areas of interest. It processes only the area of the raster that intersect a
 defined bounding box, and can optionally compare
 predictions with polygon data (GeoPackage) for change detection.
 
+For questions about the repo, email rajoh@kds.dk 
+
 ------------------------------------------------------------------------
 ![change_detection_pipeline](https://github.com/user-attachments/assets/f3fc07ab-0b9c-422d-b236-9dcb5c798fc2)
 ------------------------------------------------------------------------
