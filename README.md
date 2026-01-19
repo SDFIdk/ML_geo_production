@@ -5,12 +5,14 @@ PyTorch semantic-segmentation models over GeoTIFF imagery, ensembles
 their outputs, and produces combined, normalized probability arrays for
 areas of interest. It processes only the area of the raster that intersect a
 defined bounding box, and can optionally compare
-predictions with polygon data (GeoPackage) for change detection.
+predictions with polygon data (e.g GeoPackage) for change detection.
 
 For questions about the repo, email rajoh@kds.dk 
 
 ------------------------------------------------------------------------
-![change_detection_pipeline](https://github.com/user-attachments/assets/f3fc07ab-0b9c-422d-b236-9dcb5c798fc2)
+
+![change_detection2](https://github.com/user-attachments/assets/d9607467-81fb-4e05-b0ac-246103c8c07a)
+
 ------------------------------------------------------------------------
 ## Features
 
@@ -18,7 +20,7 @@ For questions about the repo, email rajoh@kds.dk
 -   Processes only GeoTIFF regions that intersect the area of interest\
 -   Outputs a single combined & normalized probability array for the
     AOI\
--   Optional comparison against a GeoPackage of polygons for change
+-   Optional comparison against reference polygons for change
     detection\
 -   Example configs work with [https://github.com/SDFIdk/multi_channel_dataset_creation]dataset and pretrained models
 
