@@ -75,13 +75,15 @@ def process_images_from_dict(parsed_json):
         means=parsed_json.get("means"),
         stds=parsed_json.get("stds"),
         model_states=parsed_json.get("model_states"),
+        only_use_these_models_index=parsed_json.get("only_use_these_models_index"),
     )
 
 def process_images(image_paths, data_folders, channels, bounds, resolution=None, 
                   path_to_labels=None, remove_matching_label=False,
                   patch_size=1000, overlap=40, batch_size=8, num_workers=4,
                   saved_models=[], model_names="", means=[[0.485, 0.456, 0.406]], stds=[[0.229, 0.224, 0.225]],
-                  n_classes=3, pixel_buffer=0, debug=False,model_states=None,verify_images=False):
+                  n_classes=3, pixel_buffer=0, debug=False, model_states=None, verify_images=False, 
+                  only_use_these_models_index=None):
     """
     Core function to process a list of images using an ensemble of models and create a combined output.
     The models are loaded and processed one by one to save GPU memory.
@@ -182,8 +184,17 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
     ready_to_do_inference = time.time()
     print("now doing inference on all data in area, model by model")
 
+    # Track the actual number of models used
+    models_used_count = 0
+    
     # Iterate through each model, load it, process all images, and then unload it.
     for idx, model_state in enumerate(model_states):
+        # Skip models not in only_use_these_models_index if the list is provided
+        if only_use_these_models_index is not None and idx not in only_use_these_models_index:
+            print(f"Skipping model {idx+1}/{len(saved_models)} (index {idx}) - not in only_use_these_models_index")
+            continue
+        
+        models_used_count += 1
         print(f"Loading model {idx+1}/{len(saved_models)} from memory to GPU memory (path : {saved_models[idx]})")
         load_start = time.time()
         # Each model can have its own channels configuration and normalization parameters
@@ -229,12 +240,13 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
 
     done_with_inference = time.time()
     print("running inference on all models took: "+str(time.time()-ready_to_do_inference))
+    print(f"Total models used: {models_used_count}")
 
     # Finalize processing after all models have contributed their predictions
     # Capture the returned array and metadata from finalize_output
     finalizing_output_start = time.time()
     final_array, final_transform, dst_crs_out = finalize_output(shared_memory, merge_queue, merge_process, n_channels, target_height, target_width,
-                  pixel_buffer, bounds, resolution, dst_crs, geotiff_count_array, transform_unbuffered, len(saved_models))
+                  pixel_buffer, bounds, resolution, dst_crs, geotiff_count_array, transform_unbuffered, models_used_count)
     merge_process.join()
     del merge_process
     print("finalizing output took : "+str(time.time()-finalizing_output_start))
