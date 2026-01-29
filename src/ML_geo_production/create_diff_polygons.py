@@ -30,6 +30,8 @@ def create_diff_polygons(probs, geopackage_data, transform, crs,bounds,
                          create_new_mapping=False,
                          unknown_boarder_size=1.5,
                          extra_atributes=None):
+
+    print(geopackage_data)
     """
     Create polygons representing differences between predicted and ground truth labels.
     

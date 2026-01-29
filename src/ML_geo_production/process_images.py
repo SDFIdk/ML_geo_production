@@ -81,7 +81,7 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
                   path_to_labels=None, remove_matching_label=False,
                   patch_size=1000, overlap=40, batch_size=8, num_workers=4,
                   saved_models=[], model_names="", means=[[0.485, 0.456, 0.406]], stds=[[0.229, 0.224, 0.225]],
-                  n_classes=3, pixel_buffer=0, debug=False,model_states=None):
+                  n_classes=3, pixel_buffer=0, debug=False,model_states=None,verify_images=False):
     """
     Core function to process a list of images using an ensemble of models and create a combined output.
     The models are loaded and processed one by one to save GPU memory.
@@ -111,11 +111,10 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
     if model_states ==None:
         print("preloading all model weights into main memory for fast transfer to GPU later")
         model_states= preload_model_states(saved_models)
-
-
-    verify_start_time = time.time()
-    verify_images(image_paths)
-    print("verifying all images are ok took: " + str((time.time()-verify_start_time)/60) + " minutes")
+    if verify_images:
+        verify_start_time = time.time()
+        verify_images(image_paths)
+        print("verifying all images are ok took: " + str((time.time()-verify_start_time)/60) + " minutes")
 
     # Setup device for processing
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
