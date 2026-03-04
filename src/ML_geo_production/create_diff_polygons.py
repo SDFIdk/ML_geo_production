@@ -83,8 +83,13 @@ def create_diff_polygons(probs, geopackage_data, transform, crs,bounds,
     # Polygonize
     diff_gdf = polygonize.polygonize_raster_data(diff_array, transform, crs, buffer_size=unknown_boarder_size)
 
-    # Add attributes
-    diff_gdf = copy_attributes.add_attributes(geopackage_data, diff_gdf, extra_atributes=extra_atributes)
+    # Add attributes (STATUS, GEOMETRISTATUS, ID_LOKALID from buildings; omit REGISTRERINGFRA when not in geopackage_data)
+    diff_gdf = copy_attributes.add_attributes(
+        geopackage_data,
+        diff_gdf,
+        atributes_to_copy=["STATUS", "GEOMETRISTATUS", "ID_LOKALID"],
+        extra_atributes=extra_atributes,
+    )
 
     return diff_gdf
 

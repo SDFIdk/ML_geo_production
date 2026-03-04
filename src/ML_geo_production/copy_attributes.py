@@ -61,8 +61,10 @@ def add_attributes(loaded_geopackage, shp_gdf,
 
         if intersection_areas and max(intersection_areas) > 0:
             max_idx = np.argmax(intersection_areas)
+            overlap_row = overlaps.iloc[max_idx]
             for key in atributes_to_copy:
-                shp_gdf.at[idx, key] = overlaps.iloc[max_idx][key]
+                if key in overlap_row.index:
+                    shp_gdf.at[idx, key] = overlap_row[key]
 
     # Add area in square meters rounded to 2 decimals
     shp_gdf["Areal"] = shp_gdf.geometry.area.round(2)

@@ -2,12 +2,200 @@
 import sys
 from pathlib import Path
 import torch
+import torch.nn.functional as F
+from torch import nn
 from fastai.vision.all import *
 from ML_geo_production.image_utils import load_central_window, load_dummy_mask
 from wwf.vision.timm import *
 import time
 
 from typing import List, Dict, Any, Union
+
+
+# ---------------------------------------------------------------------
+# Swin + UPerNet wrapper
+# ---------------------------------------------------------------------
+class SwinUPerNetWrapper(nn.Module):
+    """Wrapper for Swin Transformer + UPerNet from transformers"""
+    def __init__(self, model_name, num_classes, n_in=3, pretrained=True, ignore_index=255):
+        super().__init__()
+        try:
+            from transformers import AutoModelForSemanticSegmentation, UperNetConfig
+        except ImportError:
+            raise ImportError("Please install transformers: pip install transformers")
+        
+        self.num_classes = num_classes
+        self.ignore_index = ignore_index
+        
+        if pretrained:
+            self.model = AutoModelForSemanticSegmentation.from_pretrained(
+                model_name,
+                num_labels=num_classes,
+                ignore_mismatched_sizes=True
+            )
+            if n_in != 3:
+                self._adapt_input_channels(n_in)
+        else:
+            config = UperNetConfig.from_pretrained(model_name)
+            config.num_labels = num_classes
+            self.model = AutoModelForSemanticSegmentation.from_config(config)
+            if n_in != 3:
+                self._adapt_input_channels(n_in)
+    
+    def _adapt_input_channels(self, n_in):
+        try:
+            if hasattr(self.model, 'backbone'):
+                old_patch_embed = self.model.backbone.embeddings.patch_embeddings.projection
+            elif hasattr(self.model, 'swin'):
+                old_patch_embed = self.model.swin.embeddings.patch_embeddings.projection
+            else:
+                print("Warning: Could not find patch embedding layer to adapt")
+                return
+            
+            new_patch_embed = nn.Conv2d(
+                n_in,
+                old_patch_embed.out_channels,
+                kernel_size=old_patch_embed.kernel_size,
+                stride=old_patch_embed.stride,
+                padding=old_patch_embed.padding,
+                bias=old_patch_embed.bias is not None
+            )
+            
+            nn.init.kaiming_normal_(new_patch_embed.weight, mode='fan_out', nonlinearity='relu')
+            if new_patch_embed.bias is not None:
+                nn.init.constant_(new_patch_embed.bias, 0)
+            
+            if n_in >= 3 and old_patch_embed.weight.shape[1] == 3:
+                with torch.no_grad():
+                    new_patch_embed.weight[:, :3] = old_patch_embed.weight
+            
+            if hasattr(self.model, 'backbone'):
+                self.model.backbone.embeddings.patch_embeddings.projection = new_patch_embed
+            elif hasattr(self.model, 'swin'):
+                self.model.swin.embeddings.patch_embeddings.projection = new_patch_embed
+        except Exception as e:
+            print(f"Warning: Could not adapt input channels: {e}")
+    
+    def forward(self, x):
+        outputs = self.model(pixel_values=x)
+        logits = outputs.logits
+        if logits.shape[-2:] != x.shape[-2:]:
+            logits = F.interpolate(
+                logits,
+                size=x.shape[-2:],
+                mode='bilinear',
+                align_corners=False
+            )
+        return logits
+
+
+# ---------------------------------------------------------------------
+# ConvNeXt V2 + UPerNet (transformers-based)
+# ---------------------------------------------------------------------
+class ConvNeXtV2UPerNetWrapper(nn.Module):
+    """ConvNeXt V2 backbone + UPerNet decoder using transformers library"""
+    def __init__(self, backbone_name, num_classes, n_in, pretrained=True):
+        super().__init__()
+        try:
+            from transformers import AutoModelForSemanticSegmentation, UperNetConfig
+        except ImportError:
+            raise ImportError(
+                "ConvNeXtV2+UPerNet requires transformers: pip install transformers"
+            )
+        
+        self.num_classes = num_classes
+        self.n_in = n_in
+        
+        # Map backbone names to HuggingFace model IDs
+        arch = backbone_name.replace("convnextv2_", "").replace("convnext_", "")
+        model_map = {
+            "tiny": "openmmlab/upernet-convnext-tiny",
+            "small": "openmmlab/upernet-convnext-small", 
+            "base": "openmmlab/upernet-convnext-base",
+            "large": "openmmlab/upernet-convnext-large",
+        }
+        model_name = model_map.get(arch, f"openmmlab/upernet-convnext-{arch}")
+        
+        if pretrained:
+            self.model = AutoModelForSemanticSegmentation.from_pretrained(
+                model_name,
+                num_labels=num_classes,
+                ignore_mismatched_sizes=True
+            )
+            if n_in != 3:
+                self._adapt_input_channels(n_in)
+        else:
+            config = UperNetConfig.from_pretrained(model_name)
+            config.num_labels = num_classes
+            self.model = AutoModelForSemanticSegmentation.from_config(config)
+            if n_in != 3:
+                self._adapt_input_channels(n_in)
+    
+    def _adapt_input_channels(self, n_in):
+        """Adapt the model to handle different number of input channels"""
+        try:
+            # Update the config to reflect new number of channels
+            if hasattr(self.model, 'backbone') and hasattr(self.model.backbone, 'config'):
+                self.model.backbone.config.num_channels = n_in
+            
+            if hasattr(self.model, 'backbone') and hasattr(self.model.backbone, 'embeddings'):
+                old_patch_embed = self.model.backbone.embeddings.patch_embeddings
+                
+                new_patch_embed = nn.Conv2d(
+                    n_in,
+                    old_patch_embed.out_channels,
+                    kernel_size=old_patch_embed.kernel_size,
+                    stride=old_patch_embed.stride,
+                    padding=old_patch_embed.padding,
+                    bias=old_patch_embed.bias is not None
+                )
+                
+                nn.init.kaiming_normal_(new_patch_embed.weight, mode='fan_out', nonlinearity='relu')
+                if new_patch_embed.bias is not None:
+                    nn.init.constant_(new_patch_embed.bias, 0)
+                
+                if n_in >= 3 and old_patch_embed.weight.shape[1] == 3:
+                    with torch.no_grad():
+                        new_patch_embed.weight[:, :3] = old_patch_embed.weight
+                
+                self.model.backbone.embeddings.patch_embeddings = new_patch_embed
+                
+                # Also update num_channels in embeddings
+                if hasattr(self.model.backbone.embeddings, 'num_channels'):
+                    self.model.backbone.embeddings.num_channels = n_in
+            else:
+                print("Warning: Could not find patch embedding layer to adapt")
+        except Exception as e:
+            print(f"Warning: Could not adapt input channels: {e}")
+
+    def forward(self, x):
+        outputs = self.model(pixel_values=x)
+        logits = outputs.logits
+        if logits.shape[-2:] != x.shape[-2:]:
+            logits = F.interpolate(logits, size=x.shape[-2:],
+                                mode='bilinear', align_corners=False)
+        return logits
+
+
+# ---------------------------------------------------------------------
+# Simple wrapper to make raw models compatible with Learner-like interface
+# ---------------------------------------------------------------------
+class ModelWrapper:
+    """
+    Simple wrapper to give raw nn.Module models a Learner-like interface.
+    This allows process_images.py to use learner.model consistently.
+    """
+    def __init__(self, model):
+        self.model = model
+    
+    def to(self, device):
+        self.model.to(device)
+        return self
+    
+    def eval(self):
+        self.model.eval()
+        return self
+
 
 def preload_model_states(model_paths: List[str]) -> List[Union[Dict[str, Any], Any]]:
     """
@@ -118,7 +306,7 @@ def load_unet_from_state(model_state, model_name, input_folder, n_classes=3, n_i
         The pre-loaded state dictionary (weights) of the model.
         This dict comes from an earlier torch.load() call (e.g., state = torch.load('model.pth')).
     model_name : str
-        The name of the backbone architecture (e.g., "resnet34").
+        The name of the backbone architecture (e.g., "resnet34", "swin-small-upernet").
     input_folder : str
         Path to folder with sample images (used to create the dummy DataLoader).
     n_classes : int
@@ -130,44 +318,132 @@ def load_unet_from_state(model_state, model_name, input_folder, n_classes=3, n_i
 
     Returns:
     --------
-    Learner
-        FastAI Learner object with loaded model.
+    Learner or nn.Module
+        FastAI Learner object with loaded model, or raw model for transformer-based architectures.
     """
-    
-    # 1. Create Learner (Architecture Definition)
-    dls = create_dummy_dls(input_folder)
-    print("Creating learner architecture")
-    
-    if model_name == "resnet34":
-        learn = unet_learner(dls, resnet34, n_out=n_classes, pretrained=False)
-    elif model_name == "resnet50":
-        learn = unet_learner(dls, resnet50, n_out=n_classes, pretrained=False)
-    else:
-        learn = load_saved_timm_unet(dls, model_name, n_classes=n_classes, n_in=n_in)
-
-    # 2. Load Weights (The Fast Step)
-    print("Loading state dictionary into model")
-    loading_state_start = time.time()
     
     # Extract the actual model state if it's nested in the FastAI dict structure
     state = model_state
     if isinstance(state, dict) and "model" in state:
         state = state["model"]
     
-    # Load the weights into the model
-    learn.model.load_state_dict(state)
+    model_name_lower = model_name.lower()
     
-    # NOTE: The weights are now in main memory, attached to the model object.
+    # Handle Swin + UPerNet models
+    if "swin" in model_name_lower and "upernet" in model_name_lower:
+        print(f"Creating Swin + UPerNet architecture for: {model_name}")
+        
+        # Detect n_in from checkpoint if available (look for patch embedding weight)
+        actual_n_in = n_in
+        for key in state.keys():
+            if "patch_embeddings" in key and "projection.weight" in key:
+                actual_n_in = state[key].shape[1]
+                if actual_n_in != n_in:
+                    print(f"Detected {actual_n_in} input channels from checkpoint (config specified {n_in})")
+                break
+        
+        # Map model names to HuggingFace model IDs
+        swin_models = {
+            "swin-small-upernet": "openmmlab/upernet-swin-small",
+            "swin-base-upernet": "openmmlab/upernet-swin-base",
+            "swin-large-upernet": "openmmlab/upernet-swin-large",
+        }
+        hf_model_name = swin_models.get(model_name_lower, model_name)
+        
+        model = SwinUPerNetWrapper(
+            model_name=hf_model_name,
+            num_classes=n_classes,
+            n_in=actual_n_in,
+            pretrained=False  # We'll load weights from state
+        )
+        
+        # Load weights
+        print("Loading state dictionary into model")
+        loading_state_start = time.time()
+        model.load_state_dict(state)
+        print(f"loading state dictionary took : {time.time() - loading_state_start}")
+        
+        # Move to device and set eval mode
+        print(f"Transferring model to {device}")
+        model.to(device)
+        model.eval()
+        
+        print("Returning model (wrapped for Learner compatibility)")
+        return ModelWrapper(model)
     
-    print("loading state dictionary took : " + str(time.time() - loading_state_start))
+    # Handle ConvNeXt + UPerNet models
+    elif "convnext" in model_name_lower and "upernet" in model_name_lower:
+        print(f"Creating ConvNeXt + UPerNet architecture for: {model_name}")
+        
+        # Detect n_in from checkpoint if available (look for patch embedding weight)
+        actual_n_in = n_in
+        for key in state.keys():
+            if "patch_embeddings" in key and "weight" in key and "projection" not in key:
+                actual_n_in = state[key].shape[1]
+                if actual_n_in != n_in:
+                    print(f"Detected {actual_n_in} input channels from checkpoint (config specified {n_in})")
+                break
+            elif "embeddings.patch_embeddings.weight" in key:
+                actual_n_in = state[key].shape[1]
+                if actual_n_in != n_in:
+                    print(f"Detected {actual_n_in} input channels from checkpoint (config specified {n_in})")
+                break
+        
+        # Extract the backbone name (e.g., "convnextv2_base" from "convnextv2_base_upernet")
+        backbone_name = model_name_lower.replace("_upernet", "")
+        
+        model = ConvNeXtV2UPerNetWrapper(
+            backbone_name=backbone_name,
+            num_classes=n_classes,
+            n_in=actual_n_in,
+            pretrained=False  # We'll load weights from state
+        )
+        
+        # Load weights
+        print("Loading state dictionary into model")
+        loading_state_start = time.time()
+        model.load_state_dict(state)
+        print(f"loading state dictionary took : {time.time() - loading_state_start}")
+        
+        # Move to device and set eval mode
+        print(f"Transferring model to {device}")
+        model.to(device)
+        model.eval()
+        
+        print("Returning model (wrapped for Learner compatibility)")
+        return ModelWrapper(model)
     
-    # 3. Move Model to Device (GPU)
-    print(f"Transferring model to {device}")
-    learn.model.to(device)
-    learn.model.eval()
-    
-    print("Returning learner")
-    return learn
+    # Handle standard models (resnet, efficientnet, etc.)
+    else:
+        # 1. Create Learner (Architecture Definition)
+        dls = create_dummy_dls(input_folder)
+        print("Creating learner architecture")
+        
+        if model_name == "resnet34":
+            learn = unet_learner(dls, resnet34, n_out=n_classes, pretrained=False)
+        elif model_name == "resnet50":
+            learn = unet_learner(dls, resnet50, n_out=n_classes, pretrained=False)
+        else:
+            learn = load_saved_timm_unet(dls, model_name, n_classes=n_classes, n_in=n_in)
+
+        # 2. Load Weights (The Fast Step)
+        print("Loading state dictionary into model")
+        loading_state_start = time.time()
+        
+        # Load the weights into the model
+        learn.model.load_state_dict(state)
+        
+        # NOTE: The weights are now in main memory, attached to the model object.
+        
+        print("loading state dictionary took : " + str(time.time() - loading_state_start))
+        
+        # 3. Move Model to Device (GPU)
+        print(f"Transferring model to {device}")
+        learn.model.to(device)
+        learn.model.eval()
+        
+        print("Returning learner")
+        return learn
 
 def load_saved_timm_unet(dls,model_name,bottleneck="conv",n_classes=2,n_in=3):
     a_loss_func= CrossEntropyLossFlat(axis=1,ignore_index=0)
