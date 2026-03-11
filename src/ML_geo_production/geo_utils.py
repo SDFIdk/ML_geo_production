@@ -93,7 +93,7 @@ def filter_images_by_shapefile(path_to_images, shape_file,bounds_dict=None):
     # Load the shapefile and compute bounds
     gdf = gpd.read_file(shape_file)
     bounds = gdf.total_bounds  # (minx, miny, maxx, maxy)
-    return filter_images_by_bounds(path_to_images, bounds,bounds_dict=None)
+    return filter_images_by_bounds(path_to_images, bounds,bounds_dict=bounds_dict)
 
 def filter_images_by_bounds(path_to_images, bounds,bounds_dict=None):
     """

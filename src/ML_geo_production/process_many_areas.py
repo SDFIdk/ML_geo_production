@@ -75,7 +75,6 @@ def main():
             bounds=parsed_json["bounds"],
             bounds_dict=None # Not using a pre-computed bounds dictionary here
         )
-        
 
         if not image_paths:
             print(f"No overlapping images found for shape {shape_id}. Skipping.")
