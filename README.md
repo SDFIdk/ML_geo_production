@@ -85,6 +85,55 @@ The process_many_areas.py example above shows an example of how to process many 
 
 ------------------------------------------------------------------------
 
+## Model evaluation and summarization
+
+### evaluate_models.py
+
+Runs one or more configs over shapefile-defined areas: builds label rasters from the config’s geopackage, runs inference, and writes per-area classification stats (IoU, pixel accuracy, F1, etc.) plus prediction and difference rasters.
+
+**Arguments:**
+
+-   `--config`: One or more JSON config paths; glob patterns supported (e.g. `path/to/change_detection_5_models_2026_SOTA_*`). Default: `config_files/change_detection.json`.
+-   `--shape`: One or more `.shp` or `.gpkg` paths (required).
+-   `--image_folder`: Path to folder containing input images (required).
+-   `--output_folder`: Path where label, stats, prediction and diff files are written (required).
+
+**Example:**
+
+``` bash
+python src/ML_geo_production/evaluate_models.py \
+  --config config_files/change_detection.json \
+  --shape /path/to/areas.shp \
+  --image_folder /path/to/rooftop_rgb \
+  --output_folder /path/to/evaluations
+```
+
+**Outputs:** For each (config, shape, feature): label `.tif`, stats `.md`, prediction `.tif` (`_pred_im.tif`), and difference `.tif` (`_label_pred_diff_im.tif`; 0=agree, 1=FP, 2=FN, 3=wrong class). The config must include a `geopackage` key for label creation.
+
+### summarize_evaluations.py
+
+Reads evaluation `.md` files from a folder, extracts a chosen metric and inference time, and writes a summary markdown table (score, inference minutes, filename) plus model-index mapping.
+
+**Arguments:**
+
+-   `--folder`: Folder containing evaluation `.md` files (default: `/mnt/T/mnt/ML_output/building_change_detection_2026/evaluations`).
+-   `--area`: Substring to filter files, e.g. `parcellhuse` (default: `parcellhuse`).
+-   `--output_directory`: Where to write the summary `.md` (default: same as folder).
+-   `--statistic`: Metric to extract and sort by (default: `Pixel accuracy`).
+-   `--original_config`: JSON with `model_names` for the index mapping (default: `config_files/change_detection_5_models_2026_SOTA.json`).
+
+**Example:**
+
+``` bash
+python src/ML_geo_production/summarize_evaluations.py \
+  --folder /path/to/evaluations --area parcellhuse \
+  --statistic "Pixel accuracy"
+```
+
+**Output:** One markdown file per area/statistic (e.g. `parcellhuse-Pixel_accuracy.md`) with a table of score, inference (min), and filename, plus a model index mapping section.
+
+------------------------------------------------------------------------
+
 ## Config Files
 
 See examples in `config_files/` --- these are ready to run using the
