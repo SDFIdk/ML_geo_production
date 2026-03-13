@@ -85,6 +85,14 @@ The process_many_areas.py example above shows an example of how to process many 
 
 ------------------------------------------------------------------------
 
+## Verify that everything works
+Run the Quick Start instructions 
+run 
+
+python src/ML_geo_production/process_images.py --json config_files/save_probs_preds_and_change_detection.json
+there shouold be no errors in output 
+
+------------------------------------------------------------------------
 ## Model evaluation and summarization
 
 ### evaluate_models.py
