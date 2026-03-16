@@ -106,13 +106,15 @@ the dataset included in that repository.
 
 ### Download example models
 
-``` bash
-python src/ML_geo_production/download_example_models.py
+Place a Hugging Face token file in the repo root (e.g. `my_hugging_face_token.txt`) or use the same token file as ML_Production. Then run:
+
+```bash
+python src/ML_geo_production/download_upload_models_hf.py --download --token_file ./my_hugging_face_token.txt --file_path ./models/
 ```
 
-**Note:**\
-The example models were trained using the training code from:\
- https://github.com/SDFIdk/ML_model_training
+This downloads all `.pth` model files from the default Hugging Face repo into `./models/`. Use `--repo_id` if your models are in a different repo.
+
+**Note:** The example models were trained using the training code from: https://github.com/SDFIdk/ML_model_training
 
 ------------------------------------------------------------------------
 
@@ -138,11 +140,19 @@ The process_many_areas.py example above shows an example of how to process many 
 ------------------------------------------------------------------------
 
 ## Verify that everything works
-Run the Quick Start instructions 
-run 
 
+Run the Quick Start instructions (clone dataset repo, download models with `download_upload_models_hf.py` if needed), then run:
+
+```bash
 python src/ML_geo_production/process_images.py --json config_files/save_probs_preds_and_change_detection.json
-there shouold be no errors in output 
+```
+
+There should be no errors in the output. Alternatively, run the automated verification (downloads models when `my_hugging_face_token.txt` is present, then runs the config above and checks the log):
+
+```bash
+python verify_functionality.py
+python check_logs.py
+``` 
 
 ------------------------------------------------------------------------
 ## Model evaluation and summarization

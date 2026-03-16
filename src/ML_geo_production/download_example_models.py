@@ -1,3 +1,4 @@
+"""Deprecated: use download_upload_models_hf.py for downloading models from Hugging Face."""
 import os
 import requests
 from typing import List, Dict, Union

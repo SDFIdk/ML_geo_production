@@ -37,9 +37,22 @@ def main():
 
     env_geotiff = {**os.environ, "GTIFF_SRS_SOURCE": "EPSG"}
 
-    lines.append("=== process_images.py (save_probs_preds_and_change_detection.json) ===")
+    # Optional: download models if token file exists (so models are present for this repo's tests)
+    token_file = repo_root / "my_hugging_face_token.txt"
+    if token_file.exists():
+        lines.append("=== download_upload_models_hf.py (download) ===")
+        out, ret = run(
+            f"{sys.executable} src/ML_geo_production/download_upload_models_hf.py --download --token_file {token_file} --file_path ./models/",
+            cwd=repo_root,
+        )
+        lines.append(out)
+        lines.append(f"Exit code: {ret}\n")
+    else:
+        lines.append("=== Skipping model download (my_hugging_face_token.txt not found) ===\n")
+
+    lines.append("=== process_images.py (change_detection_single_model.json) ===")
     out, ret = run(
-        f"{sys.executable} src/ML_geo_production/process_images.py --json config_files/save_probs_preds_and_change_detection.json",
+        f"{sys.executable} src/ML_geo_production/process_images.py --json config_files/change_detection_single_model.json",
         cwd=repo_root,
         env=env_geotiff,
     )
