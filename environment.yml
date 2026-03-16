@@ -1,23 +1,15 @@
-name: ML_geo_production
+name: ML_sdfi
 channels:
-  - fastai
-  - pytorch
-  - nvidia
   - conda-forge
 dependencies:
   - python=3.10
-  - fastai
-  - pytorch
+  - numpy<2
   - geopandas
   - gdal
   - fiona
   - psutil
-  - rasterio
-  - torchvision
-  - pytorch-cuda=12.1
+  # rasterio (and Pillow) installed via pip from requirements_pip.txt for Windows-compatible builds
+  - setuptools<76
   - pip
-  - pip:
-      - git+https://github.com/rasmuspjohansson/albumentations-multi-channels
-      - git+https://github.com/walkwithfastai/walkwithfastai.github.io
-      - git+https://github.com/SDFIdk/multi_channel_dataset_creation.git
-      - psycopg2-binary
+  # Pip deps (PyTorch nightly, fastai, git packages, this project) installed in one step after env create:
+  # From repo root: pip install --pre --no-build-isolation -r requirements_pip.txt

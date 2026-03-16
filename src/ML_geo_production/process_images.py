@@ -153,7 +153,6 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
         n_channels = src.count
         dst_crs = src.crs
 
-
     # Count how many times each pixel is covered by a geotiff
     # This geotiff_count_array is for the unbuffered area (bounds)
     print("creating an array counting number of times each output pixel is covered by a geotiff")

@@ -40,8 +40,12 @@ def add_attributes(loaded_geopackage, shp_gdf,
     for key, value in extra_atributes.items():
         shp_gdf[key] = value
 
-    # Align CRS
-    if loaded_geopackage.crs != shp_gdf.crs:
+    # Align CRS (avoid to_crs(None) which raises "Must pass either crs or epsg")
+    if shp_gdf.crs is None and loaded_geopackage.crs is not None:
+        shp_gdf = shp_gdf.set_crs(loaded_geopackage.crs)
+    elif shp_gdf.crs is None and loaded_geopackage.crs is None:
+        pass  # leave both as-is; skip reproject to avoid PROJ lookup
+    elif loaded_geopackage.crs != shp_gdf.crs:
         loaded_geopackage = loaded_geopackage.to_crs(shp_gdf.crs)
 
     # Perform spatial overlap and copy attributes
