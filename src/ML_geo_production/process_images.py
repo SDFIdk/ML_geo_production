@@ -32,6 +32,74 @@ from ML_geo_production.processing_utils import reproject_patch, merge_worker, sa
 from ML_geo_production import create_diff_polygons, model_utils
 from ML_geo_production import count_overlaps
 
+# #region agent log
+_AGENT_LOG_CANDIDATES = (
+    "/workspace/repos/ML_Production/.cursor/debug-e3638b.log",  # Apptainer debug bind (Computerome)
+    "/home/rajoh/projects/ML_Production/.cursor/debug-e3638b.log",  # Local Cursor workspace
+)
+
+
+def _agent_dbg(hypothesis_id, location, message, data=None):
+    import json
+
+    rec = {
+        "sessionId": "e3638b",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000),
+    }
+    line = json.dumps(rec, default=str) + "\n"
+    for _p in _AGENT_LOG_CANDIDATES:
+        try:
+            os.makedirs(os.path.dirname(_p), exist_ok=True)
+            with open(_p, "a", encoding="utf-8") as _f:
+                _f.write(line)
+            return
+        except Exception:
+            continue
+    try:
+        _fallback = os.path.join(os.environ.get("TMPDIR", "/tmp"), "debug-e3638b.log")
+        with open(_fallback, "a", encoding="utf-8") as _f:
+            _f.write(line)
+    except Exception:
+        pass
+
+
+def _fs_snapshot():
+    """Free space / device info for quota vs full-disk hypotheses (debug session e3638b)."""
+
+    def _vfs(path):
+        try:
+            v = os.statvfs(path)
+            return {
+                "path": path,
+                "avail_bytes": int(v.f_bavail * v.f_bsize),
+                "blocks_avail": v.f_bavail,
+            }
+        except OSError as e:
+            return {"path": path, "error": str(e), "errno": getattr(e, "errno", None)}
+
+    out = {
+        "cwd": os.getcwd(),
+        "TMPDIR": os.environ.get("TMPDIR", ""),
+        "PBS_JOBID": os.environ.get("PBS_JOBID", ""),
+        "statvfs_TMPDIR": _vfs(os.environ.get("TMPDIR", "/tmp")),
+        "statvfs_dev_shm": _vfs("/dev/shm"),
+        "statvfs_cwd": _vfs(os.getcwd()),
+    }
+    try:
+        st = os.fstat(1)
+        out["stdout_st_dev"] = st.st_dev
+        out["stdout_st_ino"] = st.st_ino
+    except OSError as e:
+        out["stdout_fstat_error"] = str(e)
+    return out
+
+
+# #endregion
+
 class ImageProcessingError(Exception):
     """Custom exception for errors in processing images."""
     def __init__(self, message, filepath):
@@ -153,6 +221,23 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
         n_channels = src.count
         dst_crs = src.crs
 
+    # #region agent log
+    _tsz = int(n_channels) * int(target_height) * int(target_width)
+    _agent_dbg(
+        "H2_H3_H4",
+        "process_images.py:after_dims",
+        "grid_and_merge_size",
+        {
+            "n_channels": n_channels,
+            "target_width": target_width,
+            "target_height": target_height,
+            "shared_floats": _tsz,
+            "shared_bytes_est": _tsz * 4,
+            **_fs_snapshot(),
+        },
+    )
+    # #endregion
+
     # Count how many times each pixel is covered by a geotiff
     # This geotiff_count_array is for the unbuffered area (bounds)
     print("creating an array counting number of times each output pixel is covered by a geotiff")
@@ -178,10 +263,52 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
 
     # Initialize merge process and shared memory
     # This shared memory will accumulate summed probabilities from all models and uses the buffered size.
+    # #region agent log
+    _agent_dbg(
+        "H2_H4",
+        "process_images.py:before_init_merge",
+        "about_to_multiprocessing_Array",
+        {
+            "shared_floats": _tsz,
+            "shared_bytes_est": _tsz * 4,
+            **_fs_snapshot(),
+        },
+    )
+    # #endregion
     shared_memory, merge_queue, merge_process = initialize_merge_process(n_channels, target_height, target_width)
 
+    # #region agent log
+    _agent_dbg(
+        "H2_H4",
+        "process_images.py:after_init_merge",
+        "merge_process_started",
+        {**_fs_snapshot()},
+    )
+    _agent_dbg(
+        "H1_H5",
+        "process_images.py:before_inference_banner_print",
+        "about_to_stdout_print",
+        {**_fs_snapshot()},
+    )
+    # #endregion
     ready_to_do_inference = time.time()
-    print("now doing inference on all data in area, model by model")
+    try:
+        print("now doing inference on all data in area, model by model")
+    except OSError as e:
+        # #region agent log
+        _agent_dbg(
+            "H1",
+            "process_images.py:inference_banner_print",
+            "OSError_on_print",
+            {
+                "errno": e.errno,
+                "str": str(e),
+                "filename": getattr(e, "filename", None),
+                **_fs_snapshot(),
+            },
+        )
+        # #endregion
+        raise
 
     # Track the actual number of models used
     models_used_count = 0
