@@ -4,7 +4,7 @@ from shapely.geometry import box
 import math
 import geopandas as gpd
 import rasterio
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from rasterio.transform import from_origin
 import fiona
 
@@ -74,13 +74,30 @@ def open_shapefile(shapefile_path):
         #if a id is made up of a path, we change it to the filename
         return [(normalize_tile_id_name(id), bbox) for (id,bbox) in ids_and_bounding_boxes]
 
+def _iter_geotiff_paths(path_to_images):
+    """
+    Yield sorted unique GeoTIFF paths under path_to_images (recursive).
+    Accepts str or Path. Extensions: .tif, .tiff (any case).
+    """
+    root = Path(path_to_images).resolve()
+    if not root.is_dir():
+        return
+    suffix_ok = {".tif", ".tiff"}
+    unique = {
+        p.resolve()
+        for p in root.rglob("*")
+        if p.is_file() and p.suffix.lower() in suffix_ok
+    }
+    for p in sorted(unique):
+        yield p
+
+
 def get_image_bounds(path_to_images):
     bounds_dict = {}
-    for img_path in sorted(os.listdir(path_to_images)):
-        if img_path.endswith(".tif"):
-            full_path = os.path.join(path_to_images, img_path)
-            with rasterio.open(full_path) as src:
-                bounds_dict[full_path] = src.bounds
+    for p in _iter_geotiff_paths(path_to_images):
+        full_path = os.fspath(p)
+        with rasterio.open(full_path) as src:
+            bounds_dict[full_path] = src.bounds
     return bounds_dict
 
 def filter_images_by_shapefile(path_to_images, shape_file,bounds_dict=None):
@@ -129,17 +146,16 @@ def filter_images_by_bounds(path_to_images, bounds,bounds_dict=None):
 
 
     else:
-        #check what files in the directory are overlapping with .shp
-        for img_path in sorted(os.listdir(path_to_images)):
-            print("img_path"+str(img_path))
-            if img_path.endswith(".tif"):
-                full_path = os.path.join(path_to_images, img_path)
-                print("loading bounds from image instad of using cashed bounds... ")
-                with rasterio.open(full_path) as src:
-                    img_bounds = src.bounds
+        # Walk directory tree (same rules as get_image_bounds) and test overlap per file.
+        for p in _iter_geotiff_paths(path_to_images):
+            full_path = os.fspath(p)
+            print("img_path" + full_path)
+            print("loading bounds from image instad of using cashed bounds... ")
+            with rasterio.open(full_path) as src:
+                img_bounds = src.bounds
             if not (img_bounds.right < minx or img_bounds.left > maxx or
                     img_bounds.top < miny or img_bounds.bottom > maxy):
-                    valid_image_paths.append(full_path)
+                valid_image_paths.append(full_path)
     
     return valid_image_paths, bounds
 
