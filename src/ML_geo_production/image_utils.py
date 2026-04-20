@@ -4,7 +4,7 @@ import rasterio
 from rasterio.windows import Window
 from fastai.vision.all import PILImage, PILMask
 
-def load_central_window(fn, window_size=1000):
+def load_central_window(fn, window_size=1000, n_channels=None):
     """
     Uses rasterio to load only the central window from the image.
     
@@ -14,6 +14,9 @@ def load_central_window(fn, window_size=1000):
         Path to the image file
     window_size : int
         Size of the window to extract
+    n_channels : int, optional
+        If set, read at most this many raster bands (1..n_channels), so dummy
+        dataloaders match a model with n_in channels. If None, read all bands.
         
     Returns:
     --------
@@ -26,8 +29,12 @@ def load_central_window(fn, window_size=1000):
         col_off = max((width - window_size) // 2, 0)
         row_off = max((height - window_size) // 2, 0)
         window = Window(col_off, row_off, window_size, window_size)
-        # Read only the window from the file.
-        arr = src.read(window=window)
+        # Read only the window from the file (optionally first n_channels bands only).
+        if n_channels is None:
+            arr = src.read(window=window)
+        else:
+            n = max(1, min(int(n_channels), src.count))
+            arr = src.read(indexes=list(range(1, n + 1)), window=window)
         # Rearrange array dimensions: (channels, H, W) -> (H, W, channels)
         arr = np.moveaxis(arr, 0, -1)
         # If not already uint8, normalize and convert.

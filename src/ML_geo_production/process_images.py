@@ -198,7 +198,17 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
         load_start = time.time()
         # Each model can have its own channels configuration and normalization parameters
         n_in = len(means[idx])
-        learner = load_unet_from_state(model_state, model_names[idx], path_to_images_dir, n_classes=n_classes, device=device, n_in=n_in) # path_to_images_dir is only used for dummy dls which is not called here
+        learner = load_unet_from_state(
+            model_state,
+            model_names[idx],
+            path_to_images_dir,
+            n_classes=n_classes,
+            device=device,
+            n_in=n_in,
+            sample_image_path=image_paths[0] if image_paths else None,
+            norm_means=means[idx],
+            norm_stds=stds[idx],
+        )
         learner.model.to(device)
         learner.model.eval()
         print("loading model took : "+str(time.time()-load_start))

@@ -9,7 +9,7 @@ from ML_geo_production.image_utils import load_central_window, load_dummy_mask
 from wwf.vision.timm import *
 import time
 
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Optional, Sequence
 
 
 # ---------------------------------------------------------------------
@@ -248,7 +248,16 @@ def preload_model_states(model_paths: List[str]) -> List[Union[Dict[str, Any], A
     return preloaded_states
 
 
-def create_dummy_dls(folder, size=224, bs=1, n_classes=3):
+def create_dummy_dls(
+    folder,
+    size=224,
+    bs=1,
+    n_classes=3,
+    n_in=3,
+    sample_path=None,
+    norm_means: Optional[Sequence[float]] = None,
+    norm_stds: Optional[Sequence[float]] = None,
+):
     """
     Creates a dummy DataLoaders from .tif images in the given folder.
     A dummy mask (all zeros) is provided for each image.
@@ -257,13 +266,21 @@ def create_dummy_dls(folder, size=224, bs=1, n_classes=3):
     Parameters:
     -----------
     folder : str
-        Path to the folder containing .tif images
+        Path to the folder containing .tif images (used when sample_path is None)
     size : int
         Size to resize images to
     bs : int
         Batch size
     n_classes : int
         Number of classes
+    n_in : int
+        Number of input channels when norm_means is not set (ImageNet defaults extended).
+    sample_path : str or Path, optional
+        If set, only this file is used for the dummy dataset (avoids picking another
+        .tif in the folder that may have a different band count).
+    norm_means, norm_stds : optional sequences
+        If norm_means is set and non-empty, n_in is len(norm_means), the first n_in raster
+        bands are loaded, and Normalize uses these stats (stds padded or truncated to match).
         
     Returns:
     --------
@@ -272,30 +289,63 @@ def create_dummy_dls(folder, size=224, bs=1, n_classes=3):
     """
     print("Creating dummy_dls")
     folder = Path(folder)
-    files = list(folder.glob('*.tif'))
-    max_files = 2
-    files = files[:max_files]  # Limit to first 'max_files' images
+    if sample_path is not None:
+        sample_path = Path(sample_path).resolve()
+        if not sample_path.is_file():
+            sys.exit(f"sample_path is not a file: {sample_path}")
+        dl_source = sample_path.parent
+        get_items_fn = lambda _: [sample_path]
+    else:
+        files = list(folder.glob("*.tif"))
+        max_files = 2
+        files = files[:max_files]
+        if not files:
+            sys.exit(f"No .tif image files found in folder: {folder}")
+        dl_source = folder
+        get_items_fn = lambda f: list(Path(f).glob("*.tif"))
 
-    if not files:
-        sys.exit(f"No .tif image files found in folder: {folder}")
-
-    means = [0.485, 0.456, 0.406]
-    stds = [0.229, 0.224, 0.225]
-    print("Creating Datablock")
+    base_means = [0.485, 0.456, 0.406]
+    base_stds = [0.229, 0.224, 0.225]
+    if norm_means is not None and len(norm_means) > 0:
+        means = [float(x) for x in norm_means]
+        n_in = len(means)
+        if norm_stds is not None and len(norm_stds) > 0:
+            stds = [float(x) for x in norm_stds]
+        else:
+            stds = [base_stds[i] if i < len(base_stds) else base_stds[-1] for i in range(n_in)]
+        if len(stds) < n_in:
+            pad = stds[-1] if stds else 0.229
+            stds = stds + [pad] * (n_in - len(stds))
+        elif len(stds) > n_in:
+            stds = stds[:n_in]
+    else:
+        means = [base_means[i] if i < len(base_means) else base_means[-1] for i in range(n_in)]
+        stds = [base_stds[i] if i < len(base_stds) else base_stds[-1] for i in range(n_in)]
+    print(f"Creating Datablock (dummy n_in={n_in})")
 
     dblock = DataBlock(
         blocks=(ImageBlock, MaskBlock(codes=list(range(n_classes)))),
-        get_items=lambda folder: list(Path(folder).glob('*.tif')),
+        get_items=get_items_fn,
         splitter=FuncSplitter(lambda o: False),  # All items go to training set.
-        get_x=lambda o: load_central_window(o, window_size=1000),
+        get_x=lambda o: load_central_window(o, window_size=1000, n_channels=n_in),
         get_y=lambda o: load_dummy_mask(o, window_size=1000),
         batch_tfms=[Normalize.from_stats(means, stds)]
     )
 
-    return dblock.dataloaders(folder, bs=bs, size=size)
+    return dblock.dataloaders(dl_source, bs=bs, size=size)
 
 
-def load_unet_from_state(model_state, model_name, input_folder, n_classes=3, n_in=3, device="cuda"):
+def load_unet_from_state(
+    model_state,
+    model_name,
+    input_folder,
+    n_classes=3,
+    n_in=3,
+    device="cuda",
+    sample_image_path=None,
+    norm_means: Optional[Sequence[float]] = None,
+    norm_stds: Optional[Sequence[float]] = None,
+):
     """
     Loads a saved FastAI U-Net model from a pre-loaded state dictionary 
     and transfers it to the specified device (e.g., GPU).
@@ -315,6 +365,13 @@ def load_unet_from_state(model_state, model_name, input_folder, n_classes=3, n_i
         Number of input channels.
     device : str
         Device to load the model on ("cuda" or "cpu").
+    sample_image_path : str or Path, optional
+        GeoTIFF used to build the dummy DataLoader (same band count as inference). If omitted,
+        the first *.tif in input_folder is used (order not guaranteed).
+    norm_means, norm_stds : optional
+        When building the dummy dataloader (timm/resnet path), if norm_means is set then
+        n_in is len(norm_means), the first n_in bands are read from the sample GeoTIFF, and
+        Normalize uses these stats (see create_dummy_dls).
 
     Returns:
     --------
@@ -415,8 +472,15 @@ def load_unet_from_state(model_state, model_name, input_folder, n_classes=3, n_i
     
     # Handle standard models (resnet, efficientnet, etc.)
     else:
+        eff_n_in = len(norm_means) if norm_means else n_in
         # 1. Create Learner (Architecture Definition)
-        dls = create_dummy_dls(input_folder)
+        dls = create_dummy_dls(
+            input_folder,
+            n_in=eff_n_in,
+            sample_path=sample_image_path,
+            norm_means=norm_means,
+            norm_stds=norm_stds,
+        )
         print("Creating learner architecture")
         
         if model_name == "resnet34":
@@ -424,7 +488,7 @@ def load_unet_from_state(model_state, model_name, input_folder, n_classes=3, n_i
         elif model_name == "resnet50":
             learn = unet_learner(dls, resnet50, n_out=n_classes, pretrained=False)
         else:
-            learn = load_saved_timm_unet(dls, model_name, n_classes=n_classes, n_in=n_in)
+            learn = load_saved_timm_unet(dls, model_name, n_classes=n_classes, n_in=eff_n_in)
 
         # 2. Load Weights (The Fast Step)
         print("Loading state dictionary into model")
