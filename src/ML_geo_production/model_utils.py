@@ -472,7 +472,7 @@ def load_unet_from_state(
     
     # Handle standard models (resnet, efficientnet, etc.)
     else:
-        eff_n_in = len(norm_means) if norm_means else n_in
+        eff_n_in = len(norm_means) if norm_means is not None and len(norm_means) > 0 else n_in
         # 1. Create Learner (Architecture Definition)
         dls = create_dummy_dls(
             input_folder,

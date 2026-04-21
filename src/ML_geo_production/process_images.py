@@ -146,11 +146,10 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
     target_height = math.ceil((buffered_maxy - buffered_miny) / resolution)
     transform_buffered = from_origin(buffered_minx, buffered_maxy, resolution, resolution)
 
-    # The crs is taken from the first image
+    # CRS from the first image 
     if not image_paths:
         raise Exception("No images found to process.")
     with rasterio.open(image_paths[0]) as src:
-        n_channels = src.count
         dst_crs = src.crs
 
     # Count how many times each pixel is covered by a geotiff
@@ -176,9 +175,10 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
     path_to_images_dir = Path(image_paths[0]).parent if image_paths else None # Placeholder, not strictly used below
     label_paths = prepare_label_paths(path_to_images_dir, path_to_labels, image_paths, remove_matching_label)
 
-    # Initialize merge process and shared memory
-    # This shared memory will accumulate summed probabilities from all models and uses the buffered size.
-    shared_memory, merge_queue, merge_process = initialize_merge_process(n_channels, target_height, target_width)
+    # Initialize merge process and shared memory (n_classes = softmax channels).
+    shared_memory, merge_queue, merge_process = initialize_merge_process(
+        n_classes, target_height, target_width
+    )
 
     ready_to_do_inference = time.time()
     print("now doing inference on all data in area, model by model")
@@ -234,8 +234,18 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
         # transform_buffered is used for reprojection into the target array
         print("running inference..")
         run_inference_start= time.time()
-        run_inference_and_accumulate(dataloader, learner, device, means[idx], stds[idx],
-                                       transform_buffered, dst_crs, merge_queue, target_width, target_height)
+        run_inference_and_accumulate(
+            dataloader,
+            learner,
+            device,
+            means[idx],
+            stds[idx],
+            transform_buffered,
+            dst_crs,
+            merge_queue,
+            target_width,
+            target_height,
+        )
         print("running inference with model: "+str(saved_models[idx])+ " , took: "+str(time.time()-run_inference_start))
 
         del_learner_start_time= time.time()
@@ -254,8 +264,21 @@ def process_images(image_paths, data_folders, channels, bounds, resolution=None,
     # Finalize processing after all models have contributed their predictions
     # Capture the returned array and metadata from finalize_output
     finalizing_output_start = time.time()
-    final_array, final_transform, dst_crs_out = finalize_output(shared_memory, merge_queue, merge_process, n_channels, target_height, target_width,
-                  pixel_buffer, bounds, resolution, dst_crs, geotiff_count_array, transform_unbuffered, models_used_count)
+    final_array, final_transform, dst_crs_out = finalize_output(
+        shared_memory,
+        merge_queue,
+        merge_process,
+        n_classes,
+        target_height,
+        target_width,
+        pixel_buffer,
+        bounds,
+        resolution,
+        dst_crs,
+        geotiff_count_array,
+        transform_unbuffered,
+        models_used_count,
+    )
     merge_process.join()
     del merge_process
     print("finalizing output took : "+str(time.time()-finalizing_output_start))
@@ -347,7 +370,10 @@ def prepare_label_paths(path_to_images, path_to_labels, image_paths, remove_matc
 
 
 def initialize_merge_process(n_channels, target_height, target_width):
-    """Initialize shared memory and merge process"""
+    """Initialize shared memory and merge process.
+
+    n_channels must be the softmax / class count (same as n_classes).
+    """
     # Create shared memory array to store the sum of probabilities from all models
     target_size = n_channels * target_height * target_width
     shared_target = multiprocessing.Array('f', target_size)  # 'f' for float
@@ -485,6 +511,8 @@ def finalize_output(shared_memory, merge_queue, merge_process, n_channels, targe
     """
     Finalize processing and return the final unbuffered array, transform, and CRS.
     Disk saving is explicitly removed here.
+
+    n_channels: class probability channels (n_classes), matching merge_worker buffer.
     """
     # Wait for all merge tasks to complete
     merge_queue.join()
