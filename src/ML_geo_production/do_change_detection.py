@@ -61,7 +61,8 @@ def main():
             geopackage_data = parsed_json["geopackage"],
             transform = final_transform,
             crs = dst_crs,
-                    bounds=  parsed_json["bounds"]
+            bounds=  parsed_json["bounds"],
+            change_detection_threshold=parsed_json["change_detection_threshold"],
             )
         #save change detection polygons to disk
         #

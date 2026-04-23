@@ -12,10 +12,11 @@ from multi_channel_dataset_creation import geopackage_to_label_v2
 from ML_geo_production import create_diff_im, copy_attributes, polygonize, get_pred_difference
 
 
-def apply_thresholding(probs_array, diff_array, threshold=0.004):
+def apply_thresholding(probs_array, diff_array, threshold):
     """
     Apply thresholding on a difference array based on values from a probability array.
     Modifies diff_array in place.
+
     """
     if probs_array.ndim != 3:
         sys.exit("Expected probs_array with 3 dimensions (C,H,W)")
@@ -25,7 +26,9 @@ def apply_thresholding(probs_array, diff_array, threshold=0.004):
     return diff_array
 
 
-def create_diff_polygons(probs, geopackage_data, transform, crs,bounds,
+def create_diff_polygons(probs, geopackage_data, transform, crs, bounds,
+                         *,
+                         change_detection_threshold,
                          path_to_mapping="/mnt/T/mnt/trainingdata/bygningsudpegning/iter_4/roof_no_roof_mapping.txt",
                          create_new_mapping=False,
                          unknown_boarder_size=1.5,
@@ -34,7 +37,7 @@ def create_diff_polygons(probs, geopackage_data, transform, crs,bounds,
     print(geopackage_data)
     """
     Create polygons representing differences between predicted and ground truth labels.
-    
+
     Parameters
     ----------
     probs : np.ndarray
@@ -45,6 +48,10 @@ def create_diff_polygons(probs, geopackage_data, transform, crs,bounds,
         Raster transform
     crs : CRS
         Coordinate reference system
+    change_detection_threshold : float
+        Probability-channel threshold used by apply_thresholding to
+        decide which pixels count as a real change. Must be supplied by the
+        caller (normally via the run's JSON config)
     """
 
     if extra_atributes is None:
@@ -77,8 +84,8 @@ def create_diff_polygons(probs, geopackage_data, transform, crs,bounds,
     print(get_pred_difference.compare_images(pred_array,label_array , ignore_index=0))
 
     # apply thresholding
-    
-    diff_array = apply_thresholding(probs, diff_array)
+    print(f"[CD] apply_thresholding threshold={change_detection_threshold}")
+    diff_array = apply_thresholding(probs, diff_array, threshold=change_detection_threshold)
 
     # Polygonize
     diff_gdf = polygonize.polygonize_raster_data(diff_array, transform, crs, buffer_size=unknown_boarder_size)
@@ -103,7 +110,9 @@ def process_single_raster_labels(
     attr_column: str,
     unknown_border_size: float,
     background_value: int,
-    ignore_value: int
+    ignore_value: int,
+    *,
+    change_detection_threshold,
     ):
 
 
@@ -128,7 +137,7 @@ def process_single_raster_labels(
     print(get_pred_difference.compare_images(pred_array, label_array, ignore_index=0))
 
     # apply thresholding
-    diff_array = apply_thresholding(probs, diff_array)
+    diff_array = apply_thresholding(probs, diff_array, threshold=change_detection_threshold)
 
     # Polygonize
     diff_gdf = polygonize.polygonize_raster_data(diff_array, transform, crs, buffer_size=unknown_boarder_size)
@@ -149,6 +158,12 @@ if __name__ == "__main__":
     parser.add_argument("--unknown_boarder_size", type=float, default=1.5)
     parser.add_argument("--create_new_mapping", action="store_true", help="Whether to create a new mapping")
     parser.add_argument("--path_to_mapping", type=str, default="/mnt/T/mnt/trainingdata/bygningsudpegning/iter_4/roof_no_roof_mapping.txt")
+    parser.add_argument(
+        "--change_detection_threshold",
+        type=float,
+        required=True,
+        help="Probability-channel threshold used by apply_thresholding. Required; no default.",
+    )
 
     args = parser.parse_args()
 
@@ -173,6 +188,7 @@ if __name__ == "__main__":
         path_to_mapping=args.path_to_mapping,
         create_new_mapping=args.create_new_mapping,
         unknown_boarder_size=args.unknown_boarder_size,
+        change_detection_threshold=args.change_detection_threshold,
     )
 
     # Save polygons to shapefile
