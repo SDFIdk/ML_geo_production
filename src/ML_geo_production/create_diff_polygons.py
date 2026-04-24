@@ -90,14 +90,13 @@ def create_diff_polygons(probs, geopackage_data, transform, crs, bounds,
     # Polygonize
     diff_gdf = polygonize.polygonize_raster_data(diff_array, transform, crs, buffer_size=unknown_boarder_size)
 
-    # Add attributes (STATUS, GEOMETRISTATUS, ID_LOKALID from buildings; omit REGISTRERINGFRA when not in geopackage_data)
-    diff_gdf = copy_attributes.add_attributes(
-        geopackage_data,
-        diff_gdf,
-        atributes_to_copy=["STATUS", "GEOMETRISTATUS", "ID_LOKALID"],
-        extra_atributes=extra_atributes,
-    )
-
+    # Note: geodanmark attribute copy (STATUS, GEOMETRISTATUS, ID_LOKALID,
+    # REGISTRERINGFRA) is no longer done here. The calling pipeline is
+    # responsible for running copy_attributes.add_attributes (or the
+    # ML_Production copy_geodanmark_atributes module) so we have a single
+    # source of truth for that step. extra_atributes is kept in the signature
+    # for backwards compatibility but is intentionally unused here.
+    _ = extra_atributes  # silence unused-argument lint
     return diff_gdf
 
 

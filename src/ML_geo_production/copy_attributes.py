@@ -1,7 +1,22 @@
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import argparse
 import os
+
+
+def _is_missing(val):
+    """Return True if val should be treated as NULL/missing for attribute copying."""
+    if val is None:
+        return True
+    try:
+        if pd.isna(val):
+            return True
+    except (TypeError, ValueError):
+        pass
+    if isinstance(val, str) and val.strip() == "":
+        return True
+    return False
 
 def add_attributes(loaded_geopackage, shp_gdf, 
                    atributes_to_copy=['STATUS','GEOMETRISTATUS','ID_LOKALID','REGISTRERINGFRA'], 
@@ -48,7 +63,12 @@ def add_attributes(loaded_geopackage, shp_gdf,
     elif loaded_geopackage.crs != shp_gdf.crs:
         loaded_geopackage = loaded_geopackage.to_crs(shp_gdf.crs)
 
-    # Perform spatial overlap and copy attributes
+    # Perform spatial overlap and copy attributes.
+    # Per-attribute non-NULL preference: order overlapping buildings by intersection
+    # area descending; for each requested attribute pick the value from the largest
+    # overlap that is non-NULL. Falls through to next-largest only when the current
+    # candidate's value is NULL. If every overlap has NULL for a given attribute the
+    # destination column is left unchanged (None).
     for idx, shp_poly in shp_gdf.iterrows():
         overlaps = loaded_geopackage[loaded_geopackage.geometry.intersects(shp_poly.geometry)]
         if overlaps.empty:
@@ -61,14 +81,22 @@ def add_attributes(loaded_geopackage, shp_gdf,
                 intersection_areas.append(intersection.area)
             except Exception as e:
                 print(f"Error calculating intersection: {e}")
-                intersection_areas.append(0)
+                intersection_areas.append(0.0)
 
-        if intersection_areas and max(intersection_areas) > 0:
-            max_idx = np.argmax(intersection_areas)
-            overlap_row = overlaps.iloc[max_idx]
-            for key in atributes_to_copy:
-                if key in overlap_row.index:
-                    shp_gdf.at[idx, key] = overlap_row[key]
+        if not intersection_areas or max(intersection_areas) <= 0:
+            continue
+
+        order = np.argsort(intersection_areas)[::-1]
+        ordered_overlaps = overlaps.iloc[order]
+
+        for key in atributes_to_copy:
+            if key not in ordered_overlaps.columns:
+                continue
+            for _, cand in ordered_overlaps.iterrows():
+                v = cand[key]
+                if not _is_missing(v):
+                    shp_gdf.at[idx, key] = v
+                    break
 
     # Add area in square meters rounded to 2 decimals
     shp_gdf["Areal"] = shp_gdf.geometry.area.round(2)
