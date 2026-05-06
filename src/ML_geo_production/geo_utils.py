@@ -110,6 +110,51 @@ def _geometry_union_from_gdf(gdf):
     return unary_union(geom_series.values)
 
 
+def filter_images_by_geometry(path_to_images, geometry, bounds_dict=None):
+    """
+    Filter GeoTIFFs whose axis-aligned footprint intersects the provided geometry.
+
+    Parameters
+    ----------
+    path_to_images : str
+        Root directory of images (used when bounds_dict is None).
+    geometry : shapely geometry
+        Geometry to test image-footprint intersections against.
+    bounds_dict : dict, optional
+        Preloaded bounds from get_image_bounds (path string -> rasterio.Bounds).
+
+    Returns
+    -------
+    list
+        Absolute path strings of images that intersect geometry.
+    tuple
+        geometry.bounds as (minx, miny, maxx, maxy) for downstream extent use.
+    """
+    if geometry is None or geometry.is_empty:
+        return [], (0.0, 0.0, 0.0, 0.0)
+
+    valid_image_paths = []
+
+    if bounds_dict is not None:
+        for full_path, img_bounds in bounds_dict.items():
+            img_box = box(img_bounds.left, img_bounds.bottom, img_bounds.right, img_bounds.top)
+            if geometry.intersects(img_box):
+                valid_image_paths.append(full_path)
+    else:
+        for p in _iter_geotiff_paths(path_to_images):
+            full_path = os.fspath(p)
+            print("img_path" + full_path)
+            print("loading bounds from image instad of using cashed bounds... ")
+            with rasterio.open(full_path) as src:
+                img_bounds = src.bounds
+            img_box = box(img_bounds.left, img_bounds.bottom, img_bounds.right, img_bounds.top)
+            if geometry.intersects(img_box):
+                valid_image_paths.append(full_path)
+
+    bounds_tuple = tuple(geometry.bounds)
+    return valid_image_paths, bounds_tuple
+
+
 def filter_images_by_shapefile(path_to_images, shape_file, bounds_dict=None):
     """
     Filter GeoTIFFs whose axis-aligned footprint intersects the union of all geometries
@@ -141,26 +186,7 @@ def filter_images_by_shapefile(path_to_images, shape_file, bounds_dict=None):
         return [], (0.0, 0.0, 0.0, 0.0)
 
     union_geom = _geometry_union_from_gdf(gdf)
-    valid_image_paths = []
-
-    if bounds_dict:
-        for full_path, img_bounds in bounds_dict.items():
-            img_box = box(img_bounds.left, img_bounds.bottom, img_bounds.right, img_bounds.top)
-            if union_geom.intersects(img_box):
-                valid_image_paths.append(full_path)
-    else:
-        for p in _iter_geotiff_paths(path_to_images):
-            full_path = os.fspath(p)
-            print("img_path" + full_path)
-            print("loading bounds from image instad of using cashed bounds... ")
-            with rasterio.open(full_path) as src:
-                img_bounds = src.bounds
-            img_box = box(img_bounds.left, img_bounds.bottom, img_bounds.right, img_bounds.top)
-            if union_geom.intersects(img_box):
-                valid_image_paths.append(full_path)
-
-    bounds_tuple = tuple(union_geom.bounds)
-    return valid_image_paths, bounds_tuple
+    return filter_images_by_geometry(path_to_images, union_geom, bounds_dict=bounds_dict)
 
 def filter_images_by_bounds(path_to_images, bounds,bounds_dict=None):
     """
