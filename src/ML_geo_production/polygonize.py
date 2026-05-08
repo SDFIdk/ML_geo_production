@@ -3,28 +3,126 @@ import rasterio
 from rasterio.features import shapes
 import geopandas as gpd
 from shapely.geometry import shape
-import numpy as np
 import os
 import glob
 import pathlib
 
-def polygonize_raster_data(image, transform, crs, buffer_size):
+
+def _geom_valid_non_empty_positive_area(geom) -> bool:
+    return geom.is_valid and not geom.is_empty and geom.area > 0
+
+
+def _write_debug_shapefile(features, crs, output_path):
+    if not features:
+        return
+    gdf = gpd.GeoDataFrame.from_features(features)
+    gdf = gdf.set_geometry("geometry")
+    gdf = gdf[gdf.is_valid]
+    if gdf.empty:
+        return
+    gdf.crs = crs
+    pathlib.Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    gdf.to_file(output_path)
+    print(f"Saved polygon debug layer to {output_path}")
+
+
+def polygonize_raster_data(
+    image,
+    transform,
+    crs,
+    buffer_size,
+    *,
+    save_original_polygons=False,
+    save_buffer_in_polygons=False,
+    save_buffer_in_buffer_out_polygons=False,
+    polygon_debug_output_folder=None,
+):
     """Polygonize a raster numpy array and return a GeoDataFrame."""
+    want_save = (
+        save_original_polygons
+        or save_buffer_in_polygons
+        or save_buffer_in_buffer_out_polygons
+    )
+    if want_save and not polygon_debug_output_folder:
+        raise ValueError(
+            "polygon_debug_output_folder is required when any save_original_polygons, "
+            "save_buffer_in_polygons, or save_buffer_in_buffer_out_polygons is True."
+        )
+
+    out_dir = pathlib.Path(polygon_debug_output_folder) if want_save else None
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
     mask = image != 0
+    pre_buffer_features = []
+    buffer_in_features = []
+    buffer_in_out_features = []
 
     if buffer_size:
         print(f"Using buffer of size {buffer_size}")
         polygons = []
         for s, v in shapes(image, mask=mask, transform=transform):
-            shrinked_grown = shape(s).buffer(-buffer_size)
-            if shrinked_grown.is_valid and (not shrinked_grown.is_empty) and shrinked_grown.area > 0:
-                polygons.append({'properties': {'value': v}, 'geometry': shrinked_grown.buffer(buffer_size)})
+            geom0 = shape(s)
+            if (
+                save_original_polygons
+                and _geom_valid_non_empty_positive_area(geom0)
+            ):
+                pre_buffer_features.append(
+                    {"properties": {"value": v}, "geometry": geom0}
+                )
+
+            shrinked_grown = geom0.buffer(-buffer_size)
+            if _geom_valid_non_empty_positive_area(shrinked_grown):
+                if save_buffer_in_polygons:
+                    buffer_in_features.append(
+                        {"properties": {"value": v}, "geometry": shrinked_grown}
+                    )
+                grown = shrinked_grown.buffer(buffer_size)
+                polygons.append(
+                    {"properties": {"value": v}, "geometry": grown}
+                )
+                if save_buffer_in_buffer_out_polygons:
+                    buffer_in_out_features.append(
+                        {"properties": {"value": v}, "geometry": grown}
+                    )
     else:
         print("No buffer")
-        polygons = [
-            {'properties': {'value': v}, 'geometry': shape(s)}
-            for s, v in shapes(image, mask=mask, transform=transform)
-        ]
+        if save_buffer_in_polygons or save_buffer_in_buffer_out_polygons:
+            print(
+                "save_buffer_in_polygons / save_buffer_in_buffer_out_polygons: "
+                "no buffer stage; skipping those writes"
+            )
+        polygons = []
+        for s, v in shapes(image, mask=mask, transform=transform):
+            geom = shape(s)
+            polygons.append({"properties": {"value": v}, "geometry": geom})
+            if (
+                save_original_polygons
+                and _geom_valid_non_empty_positive_area(geom)
+            ):
+                pre_buffer_features.append(
+                    {"properties": {"value": v}, "geometry": geom}
+                )
+
+    if out_dir is not None:
+        if save_original_polygons:
+            _write_debug_shapefile(
+                pre_buffer_features,
+                crs,
+                out_dir / "valid_pre_buffer_polyogons.shp",
+            )
+        if buffer_size and save_buffer_in_polygons:
+            _write_debug_shapefile(
+                buffer_in_features,
+                crs,
+                out_dir / "valid_buffer_in_polygons.shp",
+            )
+        if buffer_size and save_buffer_in_buffer_out_polygons:
+            _write_debug_shapefile(
+                buffer_in_out_features,
+                crs,
+                out_dir / "valid_buffer_in_buffer_out_polyogons.shp",
+            )
 
     # Convert to GeoDataFrame
     if not polygons:

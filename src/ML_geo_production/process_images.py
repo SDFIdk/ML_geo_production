@@ -28,7 +28,12 @@ from ML_geo_production.patch_dataset import get_dataloader
 from ML_geo_production.image_utils import load_central_window, load_dummy_mask
 from ML_geo_production.model_utils import create_dummy_dls, load_unet_from_state, preload_model_states
 from ML_geo_production.geo_utils import filter_images_by_shapefile, compute_target_dimensions, filter_images_by_bounds
-from ML_geo_production.processing_utils import reproject_patch, merge_worker, save_output_data # save_output_data is imported
+from ML_geo_production.processing_utils import (
+    reproject_patch,
+    merge_worker,
+    save_output_data,
+    save_predictions_data,
+)
 from ML_geo_production import create_diff_polygons, model_utils
 from ML_geo_production import count_overlaps
 
@@ -755,39 +760,61 @@ if __name__ == "__main__":
     save_output_data(final_probability_array, final_transform, dst_crs, parsed_json["probs_path"])
     print(f'Saved output GeoTIFF to {parsed_json["probs_path"]}')
 
+    if parsed_json.get("save_preds"):
+        pred_path = parsed_json.get("pred_path")
+        if not pred_path:
+            print("Error: save_preds is true but pred_path is missing from JSON.")
+            sys.exit(1)
+        preds_2d = np.argmax(final_probability_array, axis=0).astype(np.uint8)
+        save_predictions_data(preds_2d, final_transform, dst_crs, pred_path)
+        print(f"Saved prediction GeoTIFF (argmax classes) to {pred_path}")
+
+    save_original_polygons = parsed_json.get("save_original_polygons") or False
+    save_buffer_in_polygons = parsed_json.get("save_buffer_in_polygons") or False
+    save_buffer_in_buffer_out_polygons = (
+        parsed_json.get("save_buffer_in_buffer_out_polygons") or False
+    )
+    polygon_debug_output_folder = None
+    if (
+        save_original_polygons
+        or save_buffer_in_polygons
+        or save_buffer_in_buffer_out_polygons
+    ):
+        polygon_debug_output_folder = parsed_json["polygon_output_folder"]
+
     # 7. create polygons
     diff_polygons_df = create_diff_polygons.create_diff_polygons(
-                    probs=final_probability_array,
-                    geopackage_data =parsed_json["geopackage"],
-                    transform = final_transform,
-                    crs = dst_crs,
-                    bounds=  parsed_json["bounds"],
-                    change_detection_threshold=parsed_json["change_detection_threshold"],
-                )
-
-    print("created polygons: "+str(diff_polygons_df))
-    
-
-
-def create_diff_polygons(probs, geopackage_data, meta, transform, crs,
-                         path_to_mapping="/mnt/T/mnt/trainingdata/bygningsudpegning/iter_4/roof_no_roof_mapping.txt",
-                         create_new_mapping=False,
-                         unknown_boarder_size=1.5,
-                         extra_atributes=None):
-
-
-
-
-
-    # 6. Compare the predictions with the label from the geopackage
-    diff_polygons_df = create_diff_polygons.create_diff_polygons(
-        probs=final_probability_array, 
-        geopackage=parsed_json["geopackage"], 
-        polygon_output_folder=parsed_json["polygon_output_folder"],
-        remove_tmp_files=parsed_json.get("remove_tmp_files", False)
+        probs=final_probability_array,
+        geopackage_data=parsed_json["geopackage"],
+        transform=final_transform,
+        crs=dst_crs,
+        bounds=parsed_json["bounds"],
+        change_detection_threshold=parsed_json["change_detection_threshold"],
+        unknown_boarder_size=parsed_json.get("unknown_boarder_size", 1.5),
+        path_to_mapping=parsed_json.get(
+            "path_to_mapping",
+            "/mnt/T/mnt/trainingdata/bygningsudpegning/iter_4/roof_no_roof_mapping.txt",
+        ),
+        create_new_mapping=parsed_json.get("create_new_mapping", False),
+        extra_atributes=parsed_json.get("extra_atributes"),
+        save_original_polygons=save_original_polygons,
+        save_buffer_in_polygons=save_buffer_in_polygons,
+        save_buffer_in_buffer_out_polygons=save_buffer_in_buffer_out_polygons,
+        polygon_debug_output_folder=polygon_debug_output_folder,
     )
-    # save polygons to disk
-    diff_polygons_df.to_file((Path(parsed_json["polygon_output_folder"])/Path(parsed_json["probs_path"]).name).with_suffix('.shp'))
-    print(f"Saved diff polygons to {parsed_json['polygon_output_folder']}")
-    
-    print("process_images took in all : " + str((time.time()-process_images_start_time)/60) + " minutes")
+
+    print("created polygons: " + str(diff_polygons_df))
+
+    Path(parsed_json["polygon_output_folder"]).mkdir(parents=True, exist_ok=True)
+    diff_shp_path = (
+        Path(parsed_json["polygon_output_folder"])
+        / Path(parsed_json["probs_path"]).name
+    ).with_suffix(".shp")
+    diff_polygons_df.to_file(diff_shp_path)
+    print(f"Saved diff polygons to {diff_shp_path}")
+
+    print(
+        "process_images took in all : "
+        + str((time.time() - process_images_start_time) / 60)
+        + " minutes"
+    )

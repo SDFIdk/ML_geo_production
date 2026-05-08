@@ -3,6 +3,9 @@
     "save_preds": true,
     "do_change_detection": true,
     "save_change_detection_polygons": true,
+    "save_original_polygons": true,
+    "save_buffer_in_polygons": true,
+    "save_buffer_in_buffer_out_polygons": true,
 
     "path_to_map_creation_output_folder": "./tmpfolder/",
     "probs_path": "./tmpfolder/probs.tif",

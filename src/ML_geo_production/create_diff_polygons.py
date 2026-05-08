@@ -32,7 +32,11 @@ def create_diff_polygons(probs, geopackage_data, transform, crs, bounds,
                          path_to_mapping="/mnt/T/mnt/trainingdata/bygningsudpegning/iter_4/roof_no_roof_mapping.txt",
                          create_new_mapping=False,
                          unknown_boarder_size=1.5,
-                         extra_atributes=None):
+                         extra_atributes=None,
+                         save_original_polygons=False,
+                         save_buffer_in_polygons=False,
+                         save_buffer_in_buffer_out_polygons=False,
+                         polygon_debug_output_folder=None):
 
     print(geopackage_data)
     """
@@ -88,7 +92,16 @@ def create_diff_polygons(probs, geopackage_data, transform, crs, bounds,
     diff_array = apply_thresholding(probs, diff_array, threshold=change_detection_threshold)
 
     # Polygonize
-    diff_gdf = polygonize.polygonize_raster_data(diff_array, transform, crs, buffer_size=unknown_boarder_size)
+    diff_gdf = polygonize.polygonize_raster_data(
+        diff_array,
+        transform,
+        crs,
+        unknown_boarder_size,
+        save_original_polygons=save_original_polygons,
+        save_buffer_in_polygons=save_buffer_in_polygons,
+        save_buffer_in_buffer_out_polygons=save_buffer_in_buffer_out_polygons,
+        polygon_debug_output_folder=polygon_debug_output_folder,
+    )
 
     # Note: geodanmark attribute copy (STATUS, GEOMETRISTATUS, ID_LOKALID,
     # REGISTRERINGFRA) is no longer done here. The calling pipeline is
